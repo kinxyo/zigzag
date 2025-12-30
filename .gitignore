@@ -1,8 +1,2 @@
-benchmarks.md
-lessons
-OLD_README.md
-REFERENCES.md
 zig-out
 .zig-cache
-output.json
-heavy_test.json
