@@ -3,6 +3,8 @@ const std = @import("std");
 const fmt = @import("fmt.zig");
 const Cli = std.http.Client;
 
+const ParseType = std.json.Value;
+
 pub const Collection = struct {
     name: []const u8,
     baseUrl: []const u8,
@@ -24,6 +26,21 @@ const lookup = std.StaticStringMap(std.http.Method).initComptime(.{
     .{ "patch", .PATCH },
     .{ "delete", .DELETE },
 });
+
+pub fn parseHeader(allocator: std.mem.Allocator, hs: ?[]const u8) ![]const std.http.Header {
+    if (hs == null) return &[_]std.http.Header{};
+    const header_string = hs.?;
+    var header: std.ArrayList(std.http.Header) = .empty;
+
+    const parsed: std.json.Parsed(ParseType) = try std.json.parseFromSlice(ParseType, allocator, header_string, .{});
+    var iter = parsed.value.object.iterator();
+
+    while (iter.next()) |m| {
+        try header.append(allocator, .{ .name = m.key_ptr.*, .value = m.value_ptr.*.string });
+    }
+
+    return try header.toOwnedSlice(allocator);
+}
 
 pub fn parseMethod(alloc: std.mem.Allocator, value: []const u8) !std.http.Method {
     const lower = try std.ascii.allocLowerString(alloc, value);
@@ -59,28 +76,34 @@ pub fn parseUrl(alloc: std.mem.Allocator, path: []const u8, baseUrl: ?[]const u8
     return try std.mem.concat(alloc, u8, &[2][]const u8{ tmp, path });
 }
 
-pub fn curl(alloc: std.mem.Allocator, method: std.http.Method, url: []const u8, payload: ?[]const u8, headers: std.ArrayList(std.http.Header)) Cli.FetchResult {
+pub fn curl(
+    alloc: std.mem.Allocator,
+    method: std.http.Method,
+    url: []const u8,
+    payload: ?[]const u8,
+    headers: []const std.http.Header,
+) std.http.Status {
     var c: Cli = .{ .allocator = alloc };
 
     if (method.requestHasBody() and payload == null) {
         fmt.err("Please provide a payload (3rd argument).\n", .{});
-        return std.http.Client.FetchResult{ .status = std.http.Status.internal_server_error };
+        return std.http.Status.internal_server_error;
     }
 
     const options: Cli.FetchOptions = .{
         .method = method,
         .location = .{ .url = url },
-        .extra_headers = headers.items,
+        .extra_headers = headers,
         .payload = payload,
         .response_writer = fmt.writer(),
     };
 
     const result = c.fetch(options) catch |err| {
         fmt.fatal("Failed curl: {any}", .{err});
-        return std.http.Client.FetchResult{ .status = std.http.Status.internal_server_error };
+        return std.http.Status.internal_server_error;
     };
 
     fmt.flush();
 
-    return result;
+    return result.status;
 }

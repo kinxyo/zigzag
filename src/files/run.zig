@@ -3,10 +3,16 @@ const std = @import("std");
 const fmt = @import("shared").fmt;
 const Http = @import("shared").Http;
 
-pub fn run(allocator: std.mem.Allocator, second_arg: ?[]const u8) void {
-    const FILE = second_arg orelse "config.json";
+const MAX_FILE_SIZE: usize = 1 * 1024 * 1024;
 
-    const MAX_FILE_SIZE: usize = 1 * 1024 * 1024;
+pub fn run(file_path: ?[]const u8) void {
+    var buffer: [MAX_FILE_SIZE]u8 = undefined;
+    var fba: std.heap.FixedBufferAllocator = .init(&buffer);
+
+    const allocator = fba.allocator();
+
+    const FILE = file_path orelse "config.json";
+
     const content = std.fs.cwd().readFileAlloc(allocator, FILE, MAX_FILE_SIZE) catch |err| switch (err) {
         error.FileTooBig => {
             fmt.fatal("File cannot be bigger than 1 MB.\n", .{});
@@ -40,6 +46,7 @@ pub fn run(allocator: std.mem.Allocator, second_arg: ?[]const u8) void {
     curl(allocator, &c) catch |err| {
         fmt.fatal("Failed network request: {}\n", .{err});
     };
+    std.process.cleanExit();
 }
 
 fn curl(allocator: std.mem.Allocator, c: *const Http.Collection) !void {
@@ -50,7 +57,7 @@ fn curl(allocator: std.mem.Allocator, c: *const Http.Collection) !void {
         fmt.logColored("{s} {s}\n", .{ @tagName(method), url }, .dim);
         fmt.logFlush();
 
-        var headers_slices: std.ArrayList(std.http.Header) = .empty;
+        var headers_vec: std.ArrayList(std.http.Header) = .empty;
         var body_string: ?[]const u8 = null;
 
         if (t.headers) |h| {
@@ -58,13 +65,15 @@ fn curl(allocator: std.mem.Allocator, c: *const Http.Collection) !void {
             var p = h.object.iterator();
 
             while (p.next()) |v| {
-                try headers_slices.append(allocator, .{ .name = v.key_ptr.*, .value = v.value_ptr.*.string });
+                try headers_vec.append(allocator, .{ .name = v.key_ptr.*, .value = v.value_ptr.*.string });
             }
         }
 
         if (t.body) |b| {
             body_string = try std.json.Stringify.valueAlloc(allocator, b, .{});
         }
+
+        const headers_slices = try headers_vec.toOwnedSlice(allocator);
 
         _ = Http.curl(allocator, method, url, body_string, headers_slices);
         fmt.log("\n\n", .{});

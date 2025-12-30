@@ -2,30 +2,64 @@ const std = @import("std");
 const shared = @import("shared");
 
 const fmt = shared.fmt;
-const Flag = shared.Flag;
+const Options = shared.Options;
 const Http = shared.Http;
 
-pub fn run(
-    alloc: std.mem.Allocator,
-    first_value: []const u8,
-    second_arg: ?[]const u8,
-    third_arg: ?[]const u8,
-    flags: Flag,
-) !void {
-    var r_method: []const u8 = undefined;
-    var r_path: []const u8 = undefined;
+const ParsedArgs = struct {
+    method: []const u8 = undefined,
+    path: []const u8 = undefined,
+    body: ?[]const u8 = null,
+    options: Options = .{},
+};
 
-    if (second_arg) |value| {
-        // zz <url>
-        r_method = first_value;
-        r_path = value;
-    } else {
-        // zz <method> <url>
-        r_method = "get";
-        r_path = first_value;
+// Combinations:
+// zz / -v
+// zz get / -v
+// zz post /msg "{...}" -h "{...}"
+// zz get / -h "{...}"
+fn parseArguments(first_arg: []const u8, iter: *std.process.ArgIterator) ParsedArgs {
+    var pa: ParsedArgs = .{};
+
+    var direct_path: bool = true;
+
+    while (iter.next()) |arg| {
+        if (arg[0] == '-') {
+            if (pa.options.enableFlags(arg)) {
+                pa.options.addHeader(iter.next(), iter.next());
+            } else {
+                pa.options.addHeader(arg, iter.next());
+            }
+            break;
+        } else {
+            direct_path = false;
+            pa.method = first_arg;
+            pa.path = arg;
+            pa.body = iter.next();
+        }
     }
 
-    const method = Http.parseMethod(alloc, r_method) catch |err| switch (err) {
+    if (direct_path) {
+        pa.method = "get";
+        pa.path = first_arg;
+        pa.body = iter.next();
+    }
+
+    return pa;
+}
+
+pub fn run(first_arg: []const u8, iter: *std.process.ArgIterator) void {
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer _ = gpa.deinit();
+    const child_allocator = gpa.allocator();
+
+    var arena: std.heap.ArenaAllocator = .init(child_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
+
+    const pa = parseArguments(first_arg, iter);
+
+    const method = Http.parseMethod(allocator, pa.method) catch |err| switch (err) {
         error.InvalidMethod => {
             fmt.fatal("Wrong Method: use \"get\",\"post\",\"put\",\"delete\"\n", .{});
             return;
@@ -36,41 +70,28 @@ pub fn run(
         },
     };
 
-    const url = Http.parseUrl(alloc, r_path, null) catch |err| {
+    const url = Http.parseUrl(allocator, pa.path, null) catch |err| {
         fmt.fatal("Failed to prepare path: {any}\n", .{err});
         return;
     };
 
-    var result: std.http.Client.FetchResult = undefined;
-    var header: std.ArrayList(std.http.Header) = try .initCapacity(alloc, 4096);
-    defer header.deinit(alloc);
-    if (flags.header) |header_value| {
-        const ParseType = std.json.Value;
-        const parsed: std.json.Parsed(ParseType) = std.json.parseFromSlice(ParseType, alloc, header_value, .{}) catch |err| {
-            fmt.fatal("Parsing header failed: {s}\n", .{@errorName(err)});
-            return;
-        };
-        defer parsed.deinit();
+    const header: []const std.http.Header = Http.parseHeader(allocator, pa.options.headers) catch |err| {
+        fmt.fatal("Parsing header failed: {s}\n", .{@errorName(err)});
+        return;
+    };
 
-        var iter = parsed.value.object.iterator();
+    const res_status = Http.curl(allocator, method, url, pa.body, header);
 
-        while (iter.next()) |m| {
-            try header.append(alloc, .{ .name = m.key_ptr.*, .value = m.value_ptr.*.string });
-        }
-
-        result = Http.curl(alloc, method, url, third_arg, header);
-    } else {
-        result = Http.curl(alloc, method, url, third_arg, .empty);
-    }
-
-    if (flags.verbose) {
+    if (pa.options.verbose_all) {
         fmt.logColored("\n{s} {s}\n", .{ @tagName(method), url }, .bold);
-        if (result.status == .accepted or result.status == .created or result.status == .ok) {
-            fmt.logColored("{s}\n", .{@tagName(result.status)}, .green);
+        if (res_status == .accepted or res_status == .created or res_status == .ok) {
+            fmt.logColored("{s}\n", .{@tagName(res_status)}, .green);
         } else {
-            fmt.logColored("{s}\n", .{@tagName(result.status)}, .red);
+            fmt.logColored("{s}\n", .{@tagName(res_status)}, .red);
         }
 
         fmt.logFlush();
     }
+
+    std.process.exit(0);
 }

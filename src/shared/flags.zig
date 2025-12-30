@@ -1,47 +1,40 @@
 const std = @import("std");
+const fmt = @import("fmt.zig");
 const eql = std.mem.eql;
 
-const fmt = @import("fmt.zig");
+pub const Options = struct {
+    verbose_all: bool = false,
+    headers: ?[]const u8 = null,
 
-pub const Flag = struct {
-    verbose: bool = false,
-    header: ?[]const u8 = null,
-
-    pub fn init() Flag {
-        return .{};
+    pub fn enableFlags(self: *Options, arg: []const u8) bool {
+        if (arg[1] == 'v') {
+            self.verbose_all = true;
+            return true;
+        }
+        return false;
     }
 
-    pub fn parse(self: *Flag, v: []const u8) void {
-        self.isVerbose(v);
-    }
-
-    pub fn setHeader(self: *Flag, v: ?[]const u8) void {
-        if (v) |h| {
-            if (eql(u8, h, "")) {
-                fmt.fatal("No header provided.", .{});
+    pub fn addHeader(self: *Options, arg: ?[]const u8, headers: ?[]const u8) void {
+        if (arg == null) return;
+        if (arg.?[1] != 'h') return;
+        if (self.headers != null) return; // header already set.
+        if (headers) |h| {
+            if (h.len <= 2) {
+                fmt.fatal("No headers provided.", .{});
                 return;
             }
+
             if (h[0] == '{' and h[h.len - 1] == '}') {
-                self.header = h;
+                self.headers = h;
                 return;
             }
         }
-        fmt.fatal("Invalid header provided.", .{});
-        return;
     }
 
-    pub fn print(self: *const Flag) void {
-        std.debug.print("verbose: {any}\n", .{self.verbose});
-        std.debug.print("headers: {s}\n", .{self.header.?});
-    }
-
-    fn isVerbose(self: *Flag, v: []const u8) void {
-        if (eql(u8, v, "-v") or
-            eql(u8, v, "--v") or
-            eql(u8, v, "--verbose") or
-            eql(u8, v, "-verbose"))
-        {
-            self.verbose = true;
+    pub fn log(self: *const Options) void {
+        std.log.info("verbose: {any}\n", .{self.verbose_all});
+        if (self.headers) |h| {
+            std.log.info("headers: {s}\n", .{h});
         }
     }
 };

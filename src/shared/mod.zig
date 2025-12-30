@@ -1,3 +1,3 @@
 pub const fmt = @import("fmt.zig");
-pub const Flag = @import("flags.zig").Flag;
+pub const Options = @import("flags.zig").Options;
 pub const Http = @import("http.zig");

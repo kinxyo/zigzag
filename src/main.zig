@@ -2,7 +2,7 @@ const std = @import("std");
 const shared = @import("shared");
 
 const fmt = shared.fmt;
-const Flag = shared.Flag;
+const Options = shared.Options;
 const Http = shared.Http;
 
 const CLI = @import("cli/run.zig");
@@ -28,57 +28,16 @@ const FILE = @import("files/run.zig");
 //
 //  ========================================================================================
 
+const SIZE = 1024 * 8;
+
 pub fn main() void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
-    var arena: std.heap.ArenaAllocator = .init(gpa.allocator());
-    defer arena.deinit();
-
-    const allocator = arena.allocator();
-
-    var flags = Flag.init();
-
     var iter: std.process.ArgIterator = std.process.args();
     _ = iter.skip();
 
-    while (iter.next()) |current_value| {
-        // Collect flags (to be provided before the command)
-        if (current_value[0] == '-') {
-            if (std.mem.eql(u8, current_value, "-h")) {
-                const header = iter.next();
-                flags.setHeader(header);
-            } else {
-                flags.parse(current_value);
-            }
-        } else {
-            // Run FILE or CLI (based on first non-flag token)
-            if (std.mem.eql(u8, current_value, "run")) {
-                const second_arg = iter.next();
-                FILE.run(allocator, second_arg);
-                return;
-            } else {
-                const second_arg = iter.next();
-                const third_arg = iter.next();
-                CLI.run(allocator, current_value, second_arg, third_arg, flags) catch |err| {
-                    std.log.err("CLI Failed: {}\n", .{err});
-                    return;
-                };
-                return;
-            }
-        }
-    }
+    const first: ?[]const u8 = iter.next();
 
-    // If no args provided, run TUI (no flags needed for this mode)
-    TUI.run() catch |err| {
-        fmt.err("Failed TUI: {}\n", .{err});
-        return;
-    };
-    return;
+    if (first == null) TUI.run();
+    // if (std.mem.eql(u8, first, "run")) FILE.run(iter.next());
+
+    CLI.run(first.?, &iter);
 }
-
-// TODO:
-// 1. set a proper convention for library namespace, file namespace and local function, file namespace and local function.
-// 2. headers printing for verbose.
-// 3. remove internal error for api tester error
-// 4. add option to include header in req via cli. 🗸
