@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const mod_shared = b.addModule("shared", .{
-        .root_source_file = b.path("src/shared/mod.zig"),
+        .root_source_file = b.path("src/shared.zig"),
     });
 
     const exe = b.addExecutable(.{
