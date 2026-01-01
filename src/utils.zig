@@ -1,7 +1,12 @@
 const std = @import("std");
 const start = std.mem.startsWith;
+const Allocator = std.mem.Allocator;
+const Method = std.http.Method;
+const Header = std.http.Header;
+const Client = std.http.Client;
+const Uri = std.Uri;
 
-pub const MethodStrings: std.StaticStringMap(std.http.Method) = .initComptime(.{
+pub const MethodStrings: std.StaticStringMap(Method) = .initComptime(.{
     .{ "get", .GET },
     .{ "g", .GET },
     .{ "post", .POST },
@@ -17,12 +22,12 @@ pub const MethodStrings: std.StaticStringMap(std.http.Method) = .initComptime(.{
     .{ "d", .DELETE },
 });
 
-pub fn lookup(METHOD_STRING: []const u8) ?std.http.Method {
-    if (METHOD_STRING.len > 7) return null;
+pub fn lookup(method_string: []const u8) ?Method {
+    if (method_string.len > 7) return null;
     var buf: [8]u8 = undefined;
-    const METHOD = std.mem.trim(u8, METHOD_STRING, &std.ascii.whitespace);
-    const method = lower(&buf, METHOD);
-    return MethodStrings.get(method);
+    const t = std.mem.trim(u8, method_string, &std.ascii.whitespace);
+    const l = lower(&buf, t);
+    return MethodStrings.get(l);
 }
 
 pub fn lower(buf: []u8, s: []const u8) []const u8 {
@@ -33,7 +38,7 @@ pub fn cmp(a: []const u8, comptime b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
-pub fn parseUri(allocator: std.mem.Allocator, url_string: []const u8, port: []const u8, dev: bool) !std.Uri {
+pub fn parseUrl(allocator: Allocator, url_string: []const u8, port: []const u8, dev: bool) !Uri {
     var url = url_string;
 
     const h = "http://";
@@ -45,5 +50,39 @@ pub fn parseUri(allocator: std.mem.Allocator, url_string: []const u8, port: []co
         url = try std.fmt.allocPrint(allocator, "{s}{s}", .{ if (dev) h else hs, url_string });
     }
 
-    return try std.Uri.parse(url);
+    return try Uri.parse(url);
+}
+
+pub fn parseHeaderKV(allocator: Allocator, header: []const u8) ![]const Header {
+    _ = allocator;
+    _ = header;
+    return &.{};
+}
+
+pub fn parseHeaderJSON(allocator: Allocator, header: []const u8) ![]const Header {
+    var list: std.ArrayList(Header) = .empty;
+
+    const parsed: std.json.Parsed(std.json.Value) = try std.json.parseFromSlice(std.json.Value, allocator, header, .{});
+    var iter = parsed.value.object.iterator();
+
+    while (iter.next()) |entry| {
+        // TODO: may need to dupe the strings.
+
+        const key = try allocator.dupe(u8, entry.key_ptr.*);
+        const value = try allocator.dupe(u8, entry.value_ptr.string);
+        try list.append(allocator, .{ .name = key, .value = value });
+    }
+
+    return try list.toOwnedSlice(allocator);
+}
+
+pub fn getStatusCodeColor(result_status: std.http.Status) usize {
+    return switch (result_status) {
+        .accepted => 32,
+        .@"continue" => 32,
+        .created => 32,
+        .found => 32,
+        .ok => 32,
+        else => 31,
+    };
 }
