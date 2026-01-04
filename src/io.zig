@@ -36,17 +36,17 @@ pub fn printf(comptime fmt: []const u8, args: anytype) void {
 }
 
 // flush stderr buffer.
-pub fn flushl() void {
+pub fn flush_log() void {
     stderr.flush() catch {};
 }
 
 //  write bytes to stderr buffer.
-pub fn printl(bytes: []const u8) void {
+pub fn log(bytes: []const u8) void {
     stderr.writeAll(bytes) catch {};
 }
 
 //  write bytes to stderr buffer.
-pub fn printfl(comptime fmt: []const u8, args: anytype) void {
+pub fn logf(comptime fmt: []const u8, args: anytype) void {
     stderr.print(fmt, args) catch {};
 }
 
@@ -57,4 +57,9 @@ pub fn clearScreen() void {
 pub fn clearScreenNow() void {
     clearScreen();
     flush();
+}
+
+pub fn panic(comptime fmt: []const u8, args: anytype) noreturn {
+    std.log.err(fmt, args);
+    std.process.exit(1);
 }

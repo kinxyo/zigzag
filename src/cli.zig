@@ -10,17 +10,23 @@ const Client = std.http.Client;
 
 const CLI = @This();
 
+allocator: std.mem.Allocator,
 method: Method = undefined,
 port: []const u8 = "8000",
 url: []const u8 = undefined,
-header: ?[]const u8 = null, // TODO: create method to load default headers.
+default_header: []const Header = &[1]Header{
+    .{ .name = "User-Agent", .value = "zigzag" },
+},
+header: ?[]const u8 = null,
+header_strings: std.ArrayList([]const u8) = .empty,
 body: ?[]const u8 = null,
+result: std.http.Status = undefined,
 // flags
 verbose: bool = false,
 dev: bool = false,
 
-pub fn init(f_arg: []const u8, iter: *std.process.ArgIterator) CLI {
-    var c: CLI = .{};
+pub fn init(allocator: std.mem.Allocator, f_arg: []const u8, iter: *std.process.ArgIterator) CLI {
+    var c: CLI = .{ .allocator = allocator };
 
     if (utils.lookup(f_arg)) |m| {
         // first arg is METHOD.
@@ -30,11 +36,23 @@ pub fn init(f_arg: []const u8, iter: *std.process.ArgIterator) CLI {
         // first arg is URL.
         c.method = .GET;
         c.url = f_arg;
+
+        if (f_arg[0] == '-') io.panic("Missing: <method> <url>", .{});
     }
 
+    var is_header_json: bool = false;
+    var is_header_kv: bool = false;
+
     while (iter.next()) |arg| {
-        if (cmp(arg, "-h")) {
+        if (cmp(arg, "-hj")) {
+            if (is_header_kv) return io.panic("Can use only one header format (json/kv).", .{});
             c.header = iter.next() orelse break;
+            is_header_json = true;
+        } else if (cmp(arg, "-h")) {
+            if (is_header_json) return io.panic("Can use only one header format (json/kv).", .{});
+            const h = iter.next() orelse break;
+            c.header_strings.append(allocator, h) catch @panic("Out of memory");
+            is_header_kv = true;
         } else if (cmp(arg, "-p")) {
             c.port = iter.next() orelse break;
         } else if (cmp(arg, "-v")) {
@@ -44,7 +62,6 @@ pub fn init(f_arg: []const u8, iter: *std.process.ArgIterator) CLI {
         } else {
             if (arg[0] == '-') {
                 std.log.warn("Unknown flag: `{s}`", .{arg});
-                // std.process.exit(1);
             } else {
                 c.body = arg;
             }
@@ -59,32 +76,32 @@ pub fn init(f_arg: []const u8, iter: *std.process.ArgIterator) CLI {
 // zz get httpbin.org/json
 // zz /api -d -v  # Should hit http://localhost/api
 pub fn run(self: *CLI) !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
-    const child_allocator = gpa.allocator();
+    if (true) return error.MyError;
 
-    var arena: std.heap.ArenaAllocator = .init(child_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    var response_writer: std.Io.Writer.Allocating = .init(self.allocator);
 
-    var response_writer: std.Io.Writer.Allocating = .init(allocator);
-
-    const uri = try utils.parseUrl(allocator, self.url, self.port, self.dev);
+    const uri = try utils.parseUrl(self.allocator, self.url, self.port, self.dev);
 
     var headers: ?[]const Header = null;
 
     if (self.header) |h| {
-        if (h[0] == '{') {
-            if (h[h.len - 1] == '}') {
-                headers = try utils.parseHeaderJSON(allocator, h);
-            } else {
-                return error.InvalidHeaderFormat;
+        if (h[0] != '{' or h[h.len - 1] != '}') return error.InvalidHeaderFormat;
+        headers = try utils.parseHeaderJson(self.allocator, self.default_header, h);
+    } else {
+        headers = self.allocator.alloc(Header, self.default_header.len + self.header_strings.items.len) catch @panic("Out of memory"); // TODO: try to not panic here.
+        @memcpy(headers.?[0..self.default_header.len], self.default_header);
+        var i: usize = self.default_header.len;
+        for (self.header_strings.items) |h| {
+            const trim = std.mem.trim(u8, h, ": ");
+            if (trim.len > 2) {
+                return std.log.warn("Failed to parse `{s}` header: `{s}`\n", .{ h, @errorName(error.InvalidHeaderFormat) });
             }
-        } else {
-            headers = try utils.parseHeaderKV(allocator, h);
+            headers.?[i] = h;
+            i += 1;
         }
     }
-    var client: Client = .{ .allocator = allocator };
+
+    var client: Client = .{ .allocator = self.allocator };
 
     const result = Client.fetch(&client, .{
         .location = .{ .uri = uri },
@@ -98,20 +115,23 @@ pub fn run(self: *CLI) !void {
         return err;
     };
 
-    if (self.verbose) self.log(utils.getStatusCodeColor(result.status));
+    self.result = result.status;
+
+    if (self.verbose) self.log();
 
     io.printf("{s}", .{response_writer.written()});
-    io.print("\x1b[0m");
     io.flush();
 }
 
-fn log(self: *const CLI, code: usize) void {
-    defer io.flushl();
+fn log(self: *const CLI) void {
+    defer io.flush_log();
 
-    io.printfl("\x1b[{d}m", .{code});
-    io.printfl("{s} {s}\n", .{ @tagName(self.method), self.url });
+    const code = utils.getStatusCodeColor(self.result);
+
+    io.logf("\x1b[{d}m", .{code});
+    io.logf("{s} {s}\n", .{ @tagName(self.method), self.url });
     if (self.body) |b| {
-        io.printfl("Body:\n{s}\n", .{b});
+        io.logf("Body:\n{s}\n", .{b});
     }
-    io.printl("\x1b[0m");
+    io.log("\x1b[0m");
 }

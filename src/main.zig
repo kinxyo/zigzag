@@ -11,38 +11,44 @@ const Args = std.process.ArgIterator;
 const help = @import("help.zig").help;
 // --- --- --- --- ---
 
-pub fn main() void {
+pub fn main() u8 {
     var iter = std.process.args();
     _ = iter.skip();
 
     if (iter.next()) |f_arg| {
-        if (cmp(f_arg, "run")) file();
-        if (cmp(f_arg, "help")) help();
-        cli(f_arg, &iter);
+        if (cmp(f_arg, "run")) return file();
+        if (cmp(f_arg, "help")) return help();
+        return cli(f_arg, &iter);
     }
 
-    tui();
+    return tui();
 }
 
-fn cli(f_arg: []const u8, iter: *Args) noreturn {
-    var c: CLI = .init(f_arg, iter);
+fn cli(f_arg: []const u8, iter: *Args) u8 {
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    defer _ = gpa.deinit();
+
+    var arena: std.heap.ArenaAllocator = .init(gpa.allocator());
+    defer arena.deinit();
+
+    var c: CLI = .init(arena.allocator(), f_arg, iter);
 
     c.run() catch |err| {
-        std.log.err("Failed to run CLI mode.\n{s}\n", .{@errorName(err)});
-        std.process.exit(1);
+        std.log.err("Failed to run CLI mode: {s}\n", .{@errorName(err)});
+        return 1;
     };
 
-    std.process.exit(0);
+    return 0;
 }
 
-fn file() noreturn {
+fn file() u8 {
     io.print("file");
     io.flush();
-    std.process.exit(0);
+    return 0;
 }
 
-fn tui() noreturn {
+fn tui() u8 {
     io.print("tui");
     io.flush();
-    std.process.exit(0);
+    return 0;
 }

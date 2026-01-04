@@ -5,6 +5,8 @@ const Method = std.http.Method;
 const Header = std.http.Header;
 const Client = std.http.Client;
 const Uri = std.Uri;
+const Value = std.json.Value;
+const Parsed = std.json.Parsed;
 
 pub const MethodStrings: std.StaticStringMap(Method) = .initComptime(.{
     .{ "get", .GET },
@@ -53,27 +55,26 @@ pub fn parseUrl(allocator: Allocator, url_string: []const u8, port: []const u8, 
     return try Uri.parse(url);
 }
 
-pub fn parseHeaderKV(allocator: Allocator, header: []const u8) ![]const Header {
-    _ = allocator;
-    _ = header;
-    return &.{};
-}
+pub fn parseHeaderJson(allocator: Allocator, default_headers: []const Header, headers: []const u8) ![]const Header {
+    const parse = std.json.parseFromSlice;
+    const parsed: Parsed(Value) = try parse(Value, allocator, headers, .{});
+    const map = parsed.value.object;
 
-pub fn parseHeaderJSON(allocator: Allocator, header: []const u8) ![]const Header {
-    var list: std.ArrayList(Header) = .empty;
+    const result = try allocator.alloc(Header, default_headers.len + map.count());
 
-    const parsed: std.json.Parsed(std.json.Value) = try std.json.parseFromSlice(std.json.Value, allocator, header, .{});
-    var iter = parsed.value.object.iterator();
+    @memcpy(result[0..default_headers.len], default_headers);
 
+    var iter = map.iterator();
+
+    var i: usize = default_headers.len;
     while (iter.next()) |entry| {
-        // TODO: may need to dupe the strings.
-
         const key = try allocator.dupe(u8, entry.key_ptr.*);
         const value = try allocator.dupe(u8, entry.value_ptr.string);
-        try list.append(allocator, .{ .name = key, .value = value });
+        result[i] = .{ .name = key, .value = value };
+        i += 1;
     }
 
-    return try list.toOwnedSlice(allocator);
+    return result;
 }
 
 pub fn getStatusCodeColor(result_status: std.http.Status) usize {
