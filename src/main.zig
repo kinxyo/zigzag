@@ -11,7 +11,7 @@ const Args = std.process.ArgIterator;
 const help = @import("help.zig").help;
 // --- --- --- --- ---
 
-pub fn main() u8 {
+pub fn main() !void {
     var iter = std.process.args();
     _ = iter.skip();
 
@@ -24,31 +24,24 @@ pub fn main() u8 {
     return tui();
 }
 
-fn cli(f_arg: []const u8, iter: *Args) u8 {
+fn cli(f_arg: []const u8, iter: *Args) !void {
+    errdefer std.log.err("Failed to run CLI mode.\n", .{});
+
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
 
     var arena: std.heap.ArenaAllocator = .init(gpa.allocator());
     defer arena.deinit();
 
-    var c: CLI = .init(arena.allocator(), f_arg, iter);
-
-    c.run() catch |err| {
-        std.log.err("Failed to run CLI mode: {s}\n", .{@errorName(err)});
-        return 1;
-    };
-
-    return 0;
+    return try CLI.start(arena.allocator(), f_arg, iter);
 }
 
-fn file() u8 {
+fn file() !void {
     io.print("file");
     io.flush();
-    return 0;
 }
 
-fn tui() u8 {
+fn tui() !void {
     io.print("tui");
     io.flush();
-    return 0;
 }

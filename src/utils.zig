@@ -55,18 +55,39 @@ pub fn parseUrl(allocator: Allocator, url_string: []const u8, port: []const u8, 
     return try Uri.parse(url);
 }
 
-pub fn parseHeaderJson(allocator: Allocator, default_headers: []const Header, headers: []const u8) ![]const Header {
+pub fn parseHeaderKV(allocator: Allocator, internal_headers: []const Header, external_headers: std.ArrayList([]const u8)) ![]const Header {
+    const result = try allocator.alloc(Header, internal_headers.len + external_headers.items.len);
+
+    @memcpy(result[0..internal_headers.len], internal_headers);
+
+    var i: usize = internal_headers.len;
+    for (external_headers.items) |h| {
+        var t = std.mem.splitSequence(u8, h, ": ");
+
+        const key = t.next() orelse return error.InvalidHeaderFormat;
+        const value = t.next() orelse return error.InvalidHeaderFormat;
+
+        result[i] = .{ .name = key, .value = value };
+        i += 1;
+    }
+
+    return result;
+}
+
+pub fn parseHeaderJson(allocator: Allocator, internal_headers: []const Header, external_header: []const u8) ![]const Header {
+    if (external_header[0] != '{' or external_header[external_header.len - 1] != '}') return error.InvalidHeaderFormat;
+
     const parse = std.json.parseFromSlice;
-    const parsed: Parsed(Value) = try parse(Value, allocator, headers, .{});
+    const parsed: Parsed(Value) = try parse(Value, allocator, external_header, .{});
     const map = parsed.value.object;
 
-    const result = try allocator.alloc(Header, default_headers.len + map.count());
+    const result = try allocator.alloc(Header, internal_headers.len + map.count());
 
-    @memcpy(result[0..default_headers.len], default_headers);
+    @memcpy(result[0..internal_headers.len], internal_headers);
 
     var iter = map.iterator();
 
-    var i: usize = default_headers.len;
+    var i: usize = internal_headers.len;
     while (iter.next()) |entry| {
         const key = try allocator.dupe(u8, entry.key_ptr.*);
         const value = try allocator.dupe(u8, entry.value_ptr.string);

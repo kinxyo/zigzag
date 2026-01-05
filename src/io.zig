@@ -58,8 +58,3 @@ pub fn clearScreenNow() void {
     clearScreen();
     flush();
 }
-
-pub fn panic(comptime fmt: []const u8, args: anytype) noreturn {
-    std.log.err(fmt, args);
-    std.process.exit(1);
-}

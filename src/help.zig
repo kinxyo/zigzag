@@ -26,6 +26,10 @@ pub fn help() noreturn {
 
 const bullet = '⚉';
 
+// Examples:
+// zz httpbin.org/get -v
+// zz get httpbin.org/json
+// zz /api -d -v  # Should hit http://localhost/api
 const examples =
     // ┌─┐│└┘
     \\ ┌────────────EXAMPLES─────────────┐
