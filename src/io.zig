@@ -58,3 +58,21 @@ pub fn clearScreenNow() void {
     clearScreen();
     flush();
 }
+
+/// For colored error output.
+pub fn err(comptime msg: []const u8) void {
+    stderr.writeAll("\x1b[31m") catch {};
+    stderr.writeAll(msg) catch {};
+    stderr.writeAll("\x1b[0m") catch {};
+    stderr.writeAll("\n") catch {};
+    stderr.flush() catch {};
+}
+
+/// For colored error output with format.
+pub fn errf(comptime fmt: []const u8, args: anytype) void {
+    stderr.writeAll("\x1b[31m") catch {};
+    stderr.print(fmt, args) catch {};
+    stderr.writeAll("\x1b[0m") catch {};
+    stderr.writeAll("\n") catch {};
+    stderr.flush() catch {};
+}

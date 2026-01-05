@@ -1,7 +1,7 @@
 const std = @import("std");
 const io = @import("io.zig");
 
-pub fn help() noreturn {
+pub fn run() noreturn {
     io.clearScreen();
     io.print("\n");
     io.print(logo);
