@@ -16,8 +16,8 @@ pub fn main() !void {
     _ = iter.skip();
 
     if (iter.next()) |f_arg| {
-        if (cmp(f_arg, "run")) return file.run();
         if (cmp(f_arg, "help")) return help.run();
+        if (cmp(f_arg, "run")) return file.run(&iter);
         return cli.run(f_arg, &iter);
     }
 

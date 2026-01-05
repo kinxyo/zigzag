@@ -47,7 +47,7 @@ pub fn fetch(self: *Http) !void {
     var client: Client = .{ .allocator = self.allocator };
     var response_writer: std.Io.Writer.Allocating = .init(self.allocator);
 
-    if (self.method.responseHasBody() and self.body == null) return error.NoPayload;
+    if (self.method.requestHasBody() and self.body == null) return error.NoPayload;
 
     // Make Request
     const result = Client.fetch(&client, .{
@@ -78,7 +78,7 @@ pub fn log(self: *const Http) void {
     io.logf("\x1b[{d}m", .{code});
     io.logf("{s} {s}\n", .{ @tagName(self.method), self.url });
     if (self.body) |b| {
-        io.logf("Body:\n{s}\n", .{b});
+        io.logfc(.bright_white, "Body:\n{s}\n", .{b});
     }
     io.log("\x1b[0m");
 }
