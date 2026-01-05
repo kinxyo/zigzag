@@ -1,0 +1,28 @@
+{
+  "name": "test_1",
+  "baseUrl": "http://localhost:8000",
+  "apis": [
+    {
+      "method": "get",
+      "path": "/"
+    },
+    {
+      "method": "get",
+      "path": "/json"
+    },
+    {
+      "method": "get",
+      "path": "/protected",
+      "headers": {
+        "Authorization": "Bearer secret-token-123"
+      }
+    },
+    {
+      "method": "post",
+      "path": "/msg",
+      "body": {
+        "message": "yo!"
+      }
+    }
+  ]
+}
