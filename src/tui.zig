@@ -11,8 +11,7 @@ pub fn run() !void {
 
     const text: tui.Text = .{ .value = "Working in progress..." };
 
-    // TODO: add enums for position for tuilip.
-    try cv.renderCS(text, .{ .col = @intCast(cv.getCol() - text.value.len), .row = cv.getRow() - 1 }, .draw);
+    _ = try cv.renderAlign(text, .right, .bottom);
     cv.flush();
 
     std.Thread.sleep(std.time.ns_per_s * 5);
