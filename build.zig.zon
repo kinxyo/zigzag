@@ -1,11 +1,9 @@
 .{
     .name = .zigzag,
-    .version = "0.7.1",
+    .version = "0.9.1",
     .fingerprint = 0xdffe16197d026bbe,
     .minimum_zig_version = "0.15.2",
-    .dependencies = .{ .tuilip = .{
-        .path = "../tuilip",
-    } },
+    .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",
